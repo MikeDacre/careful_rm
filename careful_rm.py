@@ -42,6 +42,7 @@ This tool should ideally be aliased to rm, add this to your bashrc/zshrc:
 """
 import os
 import sys
+import shlex as sh
 from glob import glob
 from getpass import getuser
 from platform import system
@@ -171,7 +172,7 @@ def main(argv=None):
             # Everything after this is a file
             file_sep = '--'
             all_files += [
-                i for l in [glob(n) for n in argv[argv.index(arg):]] \
+                sh.quote(i) for l in [glob(n) for n in argv[argv.index(arg):]] \
                 for i in l
             ]
             break
@@ -185,9 +186,9 @@ def main(argv=None):
             if 'v' in arg:
                 verbose = True
                 rec_args.append('-v')
-            flags.append(arg)
+            flags.append(sh.quote(arg))
         else:
-            all_files += glob(arg)
+            all_files += [sh.quote(i) for i in glob(arg)]
     if os.path.isfile(os.path.join(HOME, '.rm_recycle')):
         recycle = True
     if no_recycle:
@@ -200,11 +201,15 @@ def main(argv=None):
     drs = []
     fls = []
     bad = []
+    oth = []
     for fl in all_files:
         if os.path.isdir(fl):
             drs.append(fl)
         elif os.path.isfile(fl):
             fls.append(fl)
+        # Anything else, even broken symlinks
+        elif os.path.lexists(fl):
+            oth.append(fl)
         else:
             bad.append(fl)
     if bad:
@@ -215,8 +220,8 @@ def main(argv=None):
     ld = len(drs)
     if verbose:
         sys.stderr.write(
-            'Have {0} dirs, {1} files, and {2} non-existent\n'
-            .format(ld, len(fls), len(bad))
+            'Have {0} dirs, {1} files, {2} other, and {3} non-existent\n'
+            .format(ld, len(fls), len(oth), len(bad))
         )
     if recursive:
         if drs:
@@ -275,13 +280,29 @@ def main(argv=None):
             )
             if not yesno('Delete?', False):
                 return 10
+
     to_delete = drs + fls
     to_delete = ['"' + i + '"' for i in to_delete]
     if verbose:
-        sys.stderr.write('Have {0} files to delete\n'.format(len(to_delete)))
-    if not to_delete:
+        sys.stderr.write(
+            'Have {0} items to delete\n'.format(len(to_delete)+len(oth))
+        )
+    if not to_delete and not oth:
         sys.stderr.write('No files or folders to delete\n')
         return 22
+    # Handle non-files separately
+    if oth:
+        sys.stderr.write(
+            'The following files cannot be recycled and will be deleted:\n'
+        )
+        if yesno('Delete?', False):
+            if call(sh.split('rm -- {0}'.format(' '.join(oth)))) == 0:
+                sys.stderr.write('Done\n')
+            else:
+                sys.stderr.write('Delete failed!\n')
+                return 1
+        if not to_delete:
+            return 0
     if recycle:
         if not os.path.isdir(RECYCLE_BIN):
             os.makedirs(RECYCLE_BIN)
@@ -311,8 +332,9 @@ def main(argv=None):
         )
     if dryrun or verbose:
         sys.stdout.write('Command: {0}\n'.format(cmnd))
-        if dryrun: return 0
-    return call(cmnd, shell=True)
+        if dryrun:
+            return 0
+    return call(sh.split(cmnd))
 
 
 if __name__ == '__main__' and '__file__' in globals():
