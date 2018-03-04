@@ -8,6 +8,10 @@ moves files to the trash can or to /var/$USER_trash.
 
 Recyling can be forced on by the existence of ~/.rm_recycle
 
+Note: splits files, directories, and other non-files (e.g. sockets) and
+handles them separately. non-files are always deleted with rm after checking
+with the user.
+
 Usage: careful_rm.py [-c] [-f | -i] [-dPRrvW] file ..
 
 Arguments
@@ -52,7 +56,7 @@ try:
 except ImportError:
     input = raw_input
 
-__version__ = '1.0b1'
+__version__ = '1.0b2'
 
 # Don't ask if fewer than this number of files deleted
 CUTOFF = 3
