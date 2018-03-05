@@ -50,6 +50,8 @@ import shlex as sh
 from glob import glob
 from getpass import getuser
 from platform import system
+from datetime import datetime as dt
+from collections import defaultdict as dd
 from subprocess import call, check_output, CalledProcessError
 try:
     from builtins import input
@@ -69,28 +71,82 @@ MAX_LINE = 5
 RECYCLE_BIN = os.path.expandvars('/tmp/{0}_trash'.format(getuser()))
 
 # Home directory recycling
+UID = os.getuid()
 HOME = os.path.expanduser('~')
 SYSTEM = system()
 if SYSTEM == 'Darwin':
     HOME_TRASH = os.path.join(HOME, '.Trash')
+    HAS_OSA = call('hash osascript 2>/dev/null', shell=True) == 0
+    if HAS_OSA:
+        OSA = check_output(['command', '-pv', 'osascript'])
+        if not isinstance(OSA, str):
+            OSA = OSA.decode()
+        OSA = OSA.strip()
 elif SYSTEM == 'Linux':
     HOME_TRASH = os.path.join(HOME, '.local/share/Trash')
 else:
-    HOME_TRASH = RECYCLE_BIN
-if os.path.isdir(HOME_TRASH):
-    HAS_HOME = True
-else:
-    HAS_HOME = False
-    HOME_TRASH = RECYCLE_BIN
+    HOME_TRASH = None
+
+# Does the HOME trash exist?
+HAS_HOME = os.path.isdir(HOME_TRASH)
+
+# Linux trashinfo template
+TRASHINFO = """\
+[Trash Info]
+Path={path}
+DeletionDate={date}
+"""
+TIMEFMT = '%Y-%m-%dT%H:%M:%S'
+
+###############################################################################
+#                              Helper Functions                               #
+###############################################################################
+
+def get_ans(message, options, default=None):
+    """Get an answer from user from list.
+
+    Params
+    ------
+    messsage : str
+        Message for user
+    options : list
+        Options to chose from
+    default : str, optional
+        Default option, must be in options
+
+    Returns
+    -------
+    answer : str
+    """
+    if default:
+        assert default in options
+        default = default.lower()
+    options = [i.lower() for i in options]
+    str_options = []
+    for opt in options:
+        if opt == default:
+            str_options.append(opt.upper())
+        else:
+            str_options.append(opt)
+
+    message += ' [{0}] '.format('/'.join(str_options))
+    while True:
+        ans = input(message)
+        if not isinstance(ans, str):
+            ans = ans.decode()
+        ans = ans.strip().lower()
+        if ans:
+            if ans in options:
+                return ans
+        elif default:
+            return default
+        sys.stderr.write('Invalid choice {0}, try again\n'.format(ans))
 
 
 def yesno(message, def_yes=True):
     """Get a yes or no answer from the user."""
-    message += ' [Y/n] ' if def_yes else ' [y/N] '
-    ans = input(message)
-    if ans:
-        return ans.lower() == 'y' or ans.lower() == 'yes'
-    return def_yes
+    ans = get_ans(message, ['y', 'n'], 'y' if def_yes else 'n')
+    return ans == 'y'
 
 
 def format_list(input_list):
@@ -142,6 +198,211 @@ def format_list(input_list):
     return outstr
 
 
+def get_mount(fl):
+    """Return the mountpoint for fl."""
+    test_path = fl
+    while test_path:
+        if os.path.ismount(test_path) or test_path == '/':
+            return test_path
+        test_path = os.path.dirname(test_path)
+    return '/'
+
+###############################################################################
+#                              Deletion Helpers                               #
+###############################################################################
+
+
+def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
+    """Identify best recycle bins for files and then try to recycle them.
+
+    Params
+    ------
+    files : list of str
+        Files, directories, or something else to recycle
+    mv_flags : list of str
+        Flags to pass to mv
+    try_apple : bool, optional
+        Try to use apple script, only means anything on Darwin, default True.
+    verbose : bool, optional
+        Print extra info
+    dryrun : bool
+        Don't actually move anything
+
+    Returns
+    -------
+    list
+        List of failed files, empty on success
+    """
+    # We need absolute paths for recycling
+    files = [os.path.abspath(i) for i in files]
+
+    # Try applescript first on MacOS
+    if try_apple and SYSTEM == 'Darwin' and HAS_OSA:
+        if verbose:
+            sys.stderr.write('Attempting to use applescript\n')
+        new_fls = []
+        if dryrun:
+            sys.stderr.write(
+                'Moving {0} to Trash with Finder via Applescript\n'
+                .format(files)
+            )
+            return []
+        for fl in files:
+            if recycle_darwin(fl, verbose=verbose) != 0:
+                new_fls.append(fl)
+        if new_fls:
+            sys.stderr.write(
+                'Applescript failed on:\n{0}\n'.format(format_list(new_fls))
+            )
+            files = new_fls
+        else:
+            return []
+
+    # Get a mount point for all files
+    bins = dd(list)
+    gotn = tuple()
+
+    # Get the longest path first, so we can pick the best mountpoints
+    files = sorted(files, key=lambda x: len(x), reverse=True)
+    for fl in files:
+        # Load the ones we have found already quickly
+        if fl.startswith(gotn):
+            for d in gotn:
+                if fl.startswith(d):
+                    bins[d].append(fl)
+                    break
+        else:
+            mnt = get_mount(fl)
+            if mnt == '/':
+                if HAS_HOME and fl.startswith(HOME):
+                    mnt = HOME_TRASH
+                else:
+                    mnt = RECYCLE_BIN
+            bins[mnt].append(fl)
+            gotn += (mnt,)
+
+    # Build final list of recycle bins
+    trashes = {}
+    to_delete = []
+    v_trash = '.Trash' if SYSTEM == 'Darwin' else '.Trash-{0}'.format(UID)
+    for mount, file_list in bins.items():
+        if mount == HOME_TRASH or mount == RECYCLE_BIN:
+            r_trash = mount
+        else:
+            r_trash = os.path.join(mount, v_trash)
+        if os.path.isdir(r_trash):
+            trashes[r_trash] = file_list
+        else:
+            ans = get_ans(
+                'Mount {0} has no {1}. Create, use (root) {2}, or delete files?'
+                .format(mount, v_trash, RECYCLE_BIN),
+                ['create', 'root', 'del']
+            )
+            if ans == 'create':
+                os.makedirs(r_trash)
+                if SYSTEM == 'Linux':
+                    for f in ['expunged', 'files', 'info']:
+                        os.makedirs(os.path.join(r_trash, f))
+                trashes[r_trash] = file_list
+            elif ans == 'root':
+                if RECYCLE_BIN not in trashes:
+                    trashes[RECYCLE_BIN] = []
+                trashes[RECYCLE_BIN] += file_list
+            elif ans == 'del':
+                to_delete += file_list
+            else:
+                raise Exception('Invalid response {0}'.format(ans))
+
+    # Do the deed, one file at a time (for metadata)
+    for trash, file_list in trashes.items():
+        for fl in file_list:
+            if dryrun:
+                sys.stderr.write('Moving {0} to {1}\n'.format(fl, trash))
+            if not dryrun and recycle_file(fl, trash, mv_flags) != 0:
+                to_delete.append(fl)
+
+    # Check if user wants to try to force delete files
+    if to_delete:
+        sys.stderr.write(
+            'Failed to recycle:\n{0}\n'.format(format_list(to_delete))
+        )
+        if yesno('Attempt to fully delete with rm?', False):
+            return to_delete
+
+    return []
+
+
+def recycle_file(fl, trash, mv_flags=None):
+    """Move one file to trash, do kung-foo on Linux.
+
+    If on Linux, file moved to trash/files unless trash==RECYCLE_BIN. Will
+    also create a trashinfo file. If not Linux, file just moved to trash
+    directly.
+
+    Params
+    -------
+    fl : str
+    trash : str
+    mv_flags : list of str
+        Flags to pass to mv
+
+    Returns
+    -------
+    exit_code : int
+        0 on success, something else on failure
+    """
+    if mv_flags:
+        mv_flags = ' '.join(mv_flags)
+    else:
+        mv_flags = ""
+
+    if trash == RECYCLE_BIN or SYSTEM != 'Linux':
+        return call(
+            sh.split('mv {0} -- {1} {2}'.format(
+                mv_flags, sh.quote(fl), sh.quote(trash)
+            ))
+        )
+    trash_can = os.path.join(trash, 'files')
+    err = call(
+        sh.split('mv {0} -- {1} {2}'.format(
+            mv_flags, sh.quote(fl), sh.quote(trash_can)
+        ))
+    )
+    if err == 0:
+        now = dt.now()
+        info_file = os.path.join(
+            trash, 'info', os.path.basename(fl) + '.trashinfo'
+        )
+        with open(info_file, 'w') as trash_info:
+            trash_info.write(
+                TRASHINFO.format(path=fl, date=now.strftime(TIMEFMT))
+            )
+    return err
+
+
+def recycle_darwin(fl, verbose=False):
+    """Move fl (file or dir) to trash on MacOS using applescript.
+
+    Returns
+    -------
+    exit_code : int
+        0 on success, something else on failure
+    """
+    cmnd = (
+        '{0} -e '
+        '"tell application \\"Finder\\" to delete POSIX file \\"{1}\\"" '
+        '>/dev/null 2>/dev/null'
+    ).format(OSA, os.path.abspath(fl))
+    if verbose:
+        sys.stderr.write(cmnd + '\n')
+    return call(cmnd, shell=True)
+
+
+###############################################################################
+#                         Core Function—Run As Script                         #
+###############################################################################
+
+
 def main(argv=None):
     """The careful rm function."""
     if not argv:
@@ -156,10 +417,11 @@ def main(argv=None):
     rec_args = []
     all_files = []
     dryrun     = False
-    recycle    = False
     verbose    = False
     recursive  = False
     no_recycle = False
+    recycle    = os.path.isfile(os.path.join(HOME, '.rm_recycle'))
+    recycle_hm = os.path.isfile(os.path.join(HOME, '.rm_recycle_home'))
     for arg in argv[1:]:
         if arg == '-h' or arg == '--help':
             sys.stderr.write(DOCSTR)
@@ -168,6 +430,7 @@ def main(argv=None):
             recycle = True
         elif arg == '--direct':
             recycle = False
+            recycle_hm = False
             no_recycle = True
         elif arg == '--dryrun':
             dryrun = True
@@ -176,7 +439,7 @@ def main(argv=None):
             # Everything after this is a file
             file_sep = '--'
             all_files += [
-                sh.quote(i) for l in [glob(n) for n in argv[argv.index(arg):]] \
+                i for l in [glob(n) for n in argv[argv.index(arg):]] \
                 for i in l
             ]
             break
@@ -192,11 +455,10 @@ def main(argv=None):
                 rec_args.append('-v')
             flags.append(sh.quote(arg))
         else:
-            all_files += [sh.quote(i) for i in glob(arg)]
-    if os.path.isfile(os.path.join(HOME, '.rm_recycle')):
-        recycle = True
+            all_files += glob(arg)
     if no_recycle:
         recycle = False
+        recycle_hm = False
     if verbose:
         if recycle:
             sys.stderr.write('Using recycle instead of remove\n')
@@ -209,11 +471,12 @@ def main(argv=None):
     for fl in all_files:
         if os.path.isdir(fl):
             drs.append(fl)
-        elif os.path.isfile(fl):
+        elif os.path.isfile(fl) or os.path.islink(fl):
             fls.append(fl)
         # Anything else, even broken symlinks
         elif os.path.lexists(fl):
             oth.append(fl)
+        # Should not happen as glob would reject
         else:
             bad.append(fl)
     if bad:
@@ -224,7 +487,7 @@ def main(argv=None):
     ld = len(drs)
     if verbose:
         sys.stderr.write(
-            'Have {0} dirs, {1} files, {2} other, and {3} non-existent\n'
+            'Have {0} dirs, {1} files/links, {2} other, and {3} non-existent\n'
             .format(ld, len(fls), len(oth), len(bad))
         )
     if recursive:
@@ -286,14 +549,24 @@ def main(argv=None):
                 return 10
 
     to_delete = drs + fls
-    to_delete = ['"' + i + '"' for i in to_delete]
+    to_recycle = []
+    if recycle:
+        to_recycle = to_delete
+        to_delete  = []
+    elif recycle_hm:
+        for fl in to_delete:
+            if os.path.abspath(fl).startswith(HOME):
+                to_recycle.append(fl)
+                to_delete.remove(fl)
     if verbose:
         sys.stderr.write(
-            'Have {0} items to delete\n'.format(len(to_delete)+len(oth))
+            'Have {0} items to delete and {1} item to recycle\n'
+            .format(len(to_delete)+len(oth), len(to_recycle))
         )
-    if not to_delete and not oth:
+    if not to_delete and not oth and not to_recycle:
         sys.stderr.write('No files or folders to delete\n')
         return 22
+
     # Handle non-files separately
     if oth:
         sys.stderr.write(
@@ -307,38 +580,33 @@ def main(argv=None):
                 return 1
         if not to_delete:
             return 0
-    if recycle:
+
+    if to_recycle:
         if not os.path.isdir(RECYCLE_BIN):
             os.makedirs(RECYCLE_BIN)
-        # Default to /tmp, use home if Mac OS or if Linux and in the HOME
-        # directory (all paths must be inside home, usually true)
-        rec_bin = RECYCLE_BIN
-        if HAS_HOME:
-            if SYSTEM == 'Darwin':
-                rec_bin = HOME_TRASH
-            else:
-                home_count = 0
-                for fl in drs + fls:
-                    if os.path.abspath(fl).startswith(HOME):
-                        home_count += 1
-                if home_count == len(to_delete):
-                    rec_bin = HOME_TRASH
-        cmnd = 'mv {0} {1} {2} "{3}"'.format(
-            ' '.join(rec_args), file_sep, ' '.join(to_delete), rec_bin
+        try_apple = SYSTEM == 'Darwin'
+        to_delete += recycle_files(
+            to_recycle, mv_flags=rec_args, try_apple=try_apple,
+            verbose=verbose, dryrun=dryrun
         )
-        if not dryrun:
-            sys.stderr.write(
-                'All files will be recycled to {0}\n'.format(rec_bin)
-            )
-    else:
+
+    # And finally.... the rm wrapper itself, attempts to quote and isolate
+    # file names to increase the number of things we could delete (e.g. files
+    # that start with '-' or contain '@', '*', or '~'
+    if to_delete:
         cmnd = 'rm {0} {1} {2}'.format(
-            ' '.join(flags), file_sep, ' '.join(to_delete)
+            ' '.join(flags), file_sep,
+            ' '.join([sh.quote(i) for i in to_delete])
         )
-    if dryrun or verbose:
-        sys.stdout.write('Command: {0}\n'.format(cmnd))
-        if dryrun:
-            return 0
-    return call(sh.split(cmnd))
+
+        if dryrun or verbose:
+            sys.stdout.write('Command: {0}\n'.format(cmnd))
+            if dryrun:
+                return 0
+
+        return call(sh.split(cmnd))
+
+    return 0
 
 
 if __name__ == '__main__' and '__file__' in globals():
