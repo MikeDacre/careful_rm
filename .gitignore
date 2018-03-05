@@ -24,3 +24,6 @@ ENV/
 
 # Vim
 Session.vim
+
+# Apple
+.DS_Store
