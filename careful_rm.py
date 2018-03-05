@@ -6,7 +6,10 @@ Will notify if more than a few (defined by CUTOFF) files are deleted, or if
 directories are deleted recursively. Also, provides a recycle option, which
 moves files to the trash can or to /var/$USER_trash.
 
-Recyling can be forced on by the existence of ~/.rm_recycle
+Recyling can be forced on by the existence of ~/.rm_recycle, recycling only
+the files below $HOME can be forced on with ~/.rm_recycle_home. *Generally
+this is the best option for Linux, where recycling all files isn't a great
+idea.
 
 Note: splits files, directories, and other non-files (e.g. sockets) and
 handles them separately. non-files are always deleted with rm after checking
@@ -58,7 +61,7 @@ try:
 except ImportError:
     input = raw_input
 
-__version__ = '1.0b2'
+__version__ = '1.0b3'
 
 # Don't ask if fewer than this number of files deleted
 CUTOFF = 3
@@ -98,9 +101,11 @@ DeletionDate={date}
 """
 TIMEFMT = '%Y-%m-%dT%H:%M:%S'
 
+
 ###############################################################################
 #                              Helper Functions                               #
 ###############################################################################
+
 
 def get_ans(message, options, default=None):
     """Get an answer from user from list.
@@ -207,9 +212,12 @@ def get_mount(fl):
         test_path = os.path.dirname(test_path)
     return '/'
 
+
+
 ###############################################################################
 #                              Deletion Helpers                               #
 ###############################################################################
+
 
 
 def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
@@ -584,7 +592,8 @@ def main(argv=None):
     if to_recycle:
         if not os.path.isdir(RECYCLE_BIN):
             os.makedirs(RECYCLE_BIN)
-        try_apple = SYSTEM == 'Darwin'
+        try_apple = SYSTEM == 'Darwin' and not \
+            os.path.isfile(os.path.join(HOME, '.no_apple_rm'))
         to_delete += recycle_files(
             to_recycle, mv_flags=rec_args, try_apple=try_apple,
             verbose=verbose, dryrun=dryrun
