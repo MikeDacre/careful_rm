@@ -97,7 +97,7 @@ loading your other zsh plugins.
 1. `mkdir -p ~/oh-my-zsh/custom/plugins`
 2. `cd ~/oh-my-zsh/custom/plugins`
 3. `git clone git@github.com:MikeDacre/careful_rm.git`
-4. add `plugins+=(cdbk)` to the right place in your `~/.zshrc`
+4. add `plugins+=(careful_rm)` to the right place in your `~/.zshrc`
 
 #### [Zgen](tarjoilija/zgen)
 
