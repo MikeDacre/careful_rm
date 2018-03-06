@@ -21,6 +21,8 @@ Arguments
 ---------
     -c, --recycle         move to trash instead of deleting (forced on by
                           ~/.rm_recycle)
+    -s, --shred           run shred on all files (recursively if directories
+                          included) prior to deleting, override recycle
         --direct          force off recycling, even if ~/.rm_recycle exists
         --dryrun          do not actually remove or move files, just print
     -h, --help            display this help and exit
@@ -49,6 +51,7 @@ This tool should ideally be aliased to rm, add this to your bashrc/zshrc:
 """
 import os
 import sys
+import signal
 import shlex as sh
 from glob import glob
 from getpass import getuser
@@ -92,31 +95,36 @@ def quote(s):
     return "'" + s.replace("'", "'\"'\"'") + "'"
 
 
-def run(cmd, check=False, get=True):
+def run(cmd, shell=False, check=False, get=True):
     """Replicate getstatusoutput from subprocess."""
-    if isinstance(cmd, str):
+    if not shell and isinstance(cmd, str):
         cmd = sh.split(cmd)
     if get:
-        pp = Popen(cmd, stdout=PIPE, stderr=PIPE)
+        pp = Popen(cmd, shell=shell, stdout=PIPE, stderr=PIPE)
         out, err = pp.communicate()
     else:
-        pp = Popen(cmd)
+        pp = Popen(cmd, shell=shell)
         pp.communicate()
-    code = pp.returncode
-    if check and code != 0:
-        raise CalledProcessError(code, cmd)
     if not isinstance(out, str):
         out = out.decode()
     if not isinstance(err, str):
         err = err.decode()
+    code = pp.returncode
+    if check and code != 0:
+        if get:
+            sys.stderr.write(
+                'Command failed\nSTDOUT:\n{0}\nSTDERR:\n{1}\n'
+                .format(out, err)
+            )
+        raise CalledProcessError(code, cmd)
     if get:
         return code, out.rstrip(), err.rstrip()
     return code
 
 
-def check_output(cmd):
+def check_output(cmd, shell=False):
     """Return STDOUT for cmd."""
-    _, stdout, _ = run(cmd)
+    _, stdout, _ = run(cmd, shell=shell, check=True, get=True)
     return stdout
 
 
@@ -133,10 +141,7 @@ if SYSTEM == 'Darwin':
     HOME_TRASH = os.path.join(HOME, '.Trash')
     HAS_OSA = call('hash osascript 2>/dev/null', shell=True) == 0
     if HAS_OSA:
-        OSA = check_output(['command', '-pv', 'osascript'])
-        if not isinstance(OSA, str):
-            OSA = OSA.decode()
-        OSA = OSA.strip()
+        OSA = check_output('command -pv osascript', shell=True).strip()
 elif SYSTEM == 'Linux':
     HOME_TRASH = os.path.join(HOME, '.local/share/Trash')
 else:
@@ -145,6 +150,14 @@ else:
 # Does the HOME trash exist?
 HAS_HOME = os.path.isdir(HOME_TRASH)
 
+# File shredding
+if call('hash gshred 2>/dev/null', shell=True) == 0:
+    SHRED = 'gshred'
+elif call('hash shred 2>/dev/null', shell=True) == 0:
+    SHRED = 'shred'
+else:
+    SHRED = None
+
 # Linux trashinfo template
 TRASHINFO = """\
 [Trash Info]
@@ -152,6 +165,18 @@ Path={path}
 DeletionDate={date}
 """
 TIMEFMT = '%Y-%m-%dT%H:%M:%S'
+
+
+###############################################################################
+#                         Catch Keyboard Interruption                         #
+###############################################################################
+
+def catch_keyboard(sig, frame):
+    """Catch Keyboard Interruption."""
+    sys.stderr.write('\nKeyboard Interrupt Detected, Exiting\n')
+    sys.exit(1)
+
+signal.signal(signal.SIGINT, catch_keyboard)
 
 
 ###############################################################################
@@ -212,7 +237,7 @@ def format_list(input_list):
     From: stackoverflow.com/questions/25026556
     """
     try:
-        term_width = int(check_output(['tput', 'cols']).decode().strip())
+        term_width = int(check_output(['tput', 'cols']).strip())
     except (CalledProcessError, OSError, ValueError):
         term_width = 80
 
@@ -464,6 +489,20 @@ def recycle_darwin(fl, verbose=False):
     return call(cmnd, shell=True)
 
 
+
+def shred_files(sfls, shred_args, verbose=False, dryrun=False):
+    """Call shred on sfls."""
+    cmd = '{0} {1} -- {2}'.format(
+        SHRED, ' '.join(shred_args),
+        ' '.join([quote(i) for i in sfls])
+    )
+    if dryrun or verbose:
+        sys.stderr.write('Running: {0}\n'.format(cmd))
+    if not dryrun:
+        return call(sh.split(cmd))
+    return 0
+
+
 ###############################################################################
 #                         Core Function—Run As Script                         #
 ###############################################################################
@@ -481,26 +520,28 @@ def main(argv=None):
     file_sep = '--'  # Used to separate files from args, change to '' if needed
     flags = []
     rec_args = []
+    shred_args = ['-z']
     all_files = []
-    dryrun     = False
-    verbose    = False
-    recursive  = False
-    no_recycle = False
+    shred      = False  # Shred (destroy) files prior to deletion
+    dryrun     = False  # Don't do anything, just print commands
+    verbose    = False  # Print extra info
+    recursive  = False  # Delete stuff in directories
+    no_recycle = False  # Force off recycling
     recycle    = os.path.isfile(os.path.join(HOME, '.rm_recycle'))
     recycle_hm = os.path.isfile(os.path.join(HOME, '.rm_recycle_home'))
     for arg in argv[1:]:
         if arg == '-h' or arg == '--help':
             sys.stderr.write(DOCSTR)
             return 0
-        elif arg == '--recycle' or arg == '-c':
+        elif arg == '-c' or arg == '--recycle':
             recycle = True
         elif arg == '--direct':
-            recycle = False
-            recycle_hm = False
             no_recycle = True
+        elif arg == '-s' or arg == '--shred':
+            shred = True
         elif arg == '--dryrun':
             dryrun = True
-            sys.stderr.write('Not actually removing files.\n')
+            sys.stderr.write('Dry Run. Not actually removing files.\n\n')
         elif arg == '--':
             # Everything after this is a file
             file_sep = '--'
@@ -512,24 +553,49 @@ def main(argv=None):
         elif arg.startswith('-'):
             if 'r' in arg or 'R' in arg:
                 recursive = True
+            if 'c' in arg:
+                arg = arg.replace('c', '')
+                recycle = True
+            if 's' in arg:
+                arg = arg.replace('s', '')
+                shred = True
             if 'f' in arg:
                 rec_args.append('-f')
+                shred_args.append('-f')
             if 'i' in arg:
                 rec_args.append('-i')
             if 'v' in arg:
                 verbose = True
                 rec_args.append('-v')
+                shred_args.append('-v')
             flags.append(quote(arg))
         else:
             all_files += glob(arg)
-    if no_recycle:
+    if shred and (recycle or recycle_hm):
+        sys.stderr.write('Recycle disabled because shred is in use\n')
         recycle = False
         recycle_hm = False
+        no_recycle = True
+    if no_recycle and (recycle or recycle_hm):
+        sys.stderr.write('Recycle foreced off\n')
+        recycle = False
+        recycle_hm = False
+
+    if shred:
+        if not SHRED:
+            sys.stderr.write(
+                'Cannot use shred as neither shred nor gshred '
+                'are in your path\n'
+            )
+            return 4
+        sys.stderr.write('All files will be destroyed with shred\n')
     if verbose:
         if recycle:
-            sys.stderr.write('Using recycle instead of remove\n')
+            sys.stderr.write('Using recycle instead of remove\n\n')
+        elif shred:
+            sys.stderr.write('Using shred+remove instead of recycle\n\n')
         else:
-            sys.stderr.write('Using remove instead of recycle\n')
+            sys.stderr.write('Using remove instead of recycle\n\n')
     drs = []
     fls = []
     bad = []
@@ -556,6 +622,34 @@ def main(argv=None):
             'Have {0} dirs, {1} files/links, {2} other, and {3} non-existent\n'
             .format(ld, len(fls), len(oth), len(bad))
         )
+
+    # Directory handling
+    if drs and not recursive:
+        if ld < MAX_LINE:
+            sys.stderr.write(
+                'Directories {0} included but -r not sent\n'
+                .format(drs)
+            )
+        else:
+            sys.stderr.write(
+                '{0} directories included but -r not sent\n'
+                .format(len(drs))
+            )
+        ans = get_ans(
+            '\nAdd -r, ignore dirs, or cancel?', ['add', 'ignore', 'cancel'],
+            default='cancel'
+        )
+        if ans == 'add':
+            flags.append('-r')
+            recursive = True
+        elif ans == 'ignore':
+            drs = []
+        elif ans == 'cancel':
+            return 2
+        else:
+            raise Exception('Invalid response {0}'.format(ans))
+        sys.stderr.write('\n')
+
     if recursive:
         if drs:
             dc = 0
@@ -582,26 +676,15 @@ def main(argv=None):
                 msg += '{0} dirs:'.format(ld)
                 msg += '\n{0}\n'.format(format_list(drs))
                 if info:
-                    msg += 'Containing ' + inf
+                    msg += '\nThey contain ' + inf
                 else:
-                    msg += 'Containing no subfiles or directories'
+                    msg += '\nThey contain no subfiles or directories'
             sys.stderr.write(msg + '\n')
             if not yesno('Really delete?', False):
                 return 1
-    elif drs:
-        if ld < MAX_LINE:
-            sys.stderr.write(
-                'Directories {0} included but -r not sent\n'
-                .format(drs)
-            )
-        else:
-            sys.stderr.write(
-                '{0} directories included but -r not sent\n'
-                .format(len(drs))
-            )
-        if not yesno('Continue anyway?'):
-            return 2
-        drs = []
+            sys.stderr.write('\n')
+
+    # File handling
     if len(fls) >= CUTOFF:
         if len(fls) < MAX_LINE:
             if not yesno('Delete the files {0}?'.format(fls), False):
@@ -613,7 +696,9 @@ def main(argv=None):
             )
             if not yesno('Delete?', False):
                 return 10
+        sys.stderr.write('\n')
 
+    # Build final lists
     to_delete = drs + fls
     to_recycle = []
     if recycle:
@@ -626,7 +711,7 @@ def main(argv=None):
                 to_delete.remove(fl)
     if verbose:
         sys.stderr.write(
-            'Have {0} items to delete and {1} item to recycle\n'
+            'Have {0} items to delete and {1} item to recycle\n\n'
             .format(len(to_delete)+len(oth), len(to_recycle))
         )
     if not to_delete and not oth and not to_recycle:
@@ -646,7 +731,42 @@ def main(argv=None):
                 return 1
         if not to_delete:
             return 0
+        sys.stderr.write('\n')
 
+    # Shred here
+    if shred:
+        failed = []
+        if drs:
+            if verbose:
+                sys.stderr.write(
+                    'Recursively shredding files in the following dirs:\n{0}\n'
+                    .format(format_list(drs))
+                )
+            for dr in drs:
+                for wroot, wdirs, wfiles in os.walk(dr):
+                    if verbose:
+                        sys.stderr.write('Shredding in {0}\n'.format(wroot))
+                    if wfiles:
+                        sfls = [os.path.join(wroot, i) for i in wfiles]
+                        if shred_files(sfls, shred_args, verbose, dryrun) != 0:
+                            failed.append(os.path.join(dr, wroot))
+                    elif verbose:
+                        sys.stderr.write('No files to shred\n')
+        if fls:
+            if shred_files(fls, shred_args, verbose, dryrun) != 0:
+                failed += fls
+        if failed:
+            sys.stderr.write(
+                'shred FAILED on the following files and dirs:\n{0}\n\n'.format(
+                    format_list(failed)
+                )
+            )
+            msg = 'Continue with deletion anyway (data may not be scrubbed)?'
+            if not yesno(msg, False):
+                return 13
+            sys.stderr.write('\n')
+
+    # Recycle here
     if to_recycle:
         if not os.path.isdir(RECYCLE_BIN):
             os.makedirs(RECYCLE_BIN)
@@ -667,7 +787,9 @@ def main(argv=None):
         )
 
         if dryrun or verbose:
-            sys.stdout.write('Command: {0}\n'.format(cmnd))
+            if verbose:
+                sys.stderr.write('Actually running rm\n')
+            sys.stdout.write('Running: {0}\n'.format(cmnd))
             if dryrun:
                 return 0
 
@@ -676,5 +798,6 @@ def main(argv=None):
     return 0
 
 
+# The End
 if __name__ == '__main__' and '__file__' in globals():
     sys.exit(main())
