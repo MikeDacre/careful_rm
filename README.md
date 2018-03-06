@@ -1,5 +1,7 @@
 # Careful rm
 
+Version: 1.0-beta5
+
 A wrapper for rm that adds more useful warnings and an optional recycle/trash mode
 
 Can be used as a drop-in replacement for `rm` on any Linux or MacOS system with
@@ -13,6 +15,9 @@ in files being trashed/recycled instead of deleted. Applescript is used on
 MacOS, otherwise the best trash location is chosen (see below). Most files can
 be restored using GUI tools (e.g. Nautilus/Finder), as the default Trash
 folders and metadata are used (e.g. *Put Back* works on Mac).
+
+Note: passing `-s` will result in files being destroyed with `shred` and will
+forcibly override and disable recycle mode.
 
 Ideally, this tool should be symlinked to `rm` and the file
 `~/.rm_recycle_home` should be created, which will make recycling automatic
@@ -28,6 +33,8 @@ Arguments
 ---------
     -c, --recycle         move to trash instead of deleting (forced on by
                           ~/.rm_recycle)
+    -s, --shred           run shred on all files (recursively if directories
+                          included) prior to deleting, override recycle
         --direct          force off recycling, even if ~/.rm_recycle exists
         --dryrun          do not actually remove or move files, just print
     -h, --help            display this help and exit
