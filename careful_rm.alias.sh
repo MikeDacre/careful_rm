@@ -17,6 +17,7 @@ CAREFUL_RM="${DIR}/careful_rm.py"
 # PATH, failing that, fall back to rm -I
 if [ -x "${CAREFUL_RM}" ]; then
     alias rm="${CAREFUL_RM}"
+    alias careful_rm="${CAREFUL_RM}"
 elif hash careful_rm.py 2>/dev/null; then
     alias rm="$(command -v careful_rm.py)"
 elif hash careful_rm 2>/dev/null; then
