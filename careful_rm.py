@@ -11,6 +11,10 @@ the files below $HOME can be forced on with ~/.rm_recycle_home. *Generally
 this is the best option for Linux, where recycling all files isn't a great
 idea.
 
+Passing -s or --shred will invoke shred on every file prior to removing them
+and will disable recycle mode. Passing --direct will force disable recycle
+mode without enabling shred.
+
 Note: splits files, directories, and other non-files (e.g. sockets) and
 handles them separately. non-files are always deleted with rm after checking
 with the user.
@@ -65,7 +69,7 @@ except ImportError:
     # For old versions of python 2
     input = raw_input
 
-__version__ = '1.0b4'
+__version__ = '1.0b5'
 
 # Don't ask if fewer than this number of files deleted
 CUTOFF = 3
