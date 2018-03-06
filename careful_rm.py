@@ -69,7 +69,7 @@ except ImportError:
     # For old versions of python 2
     input = raw_input
 
-__version__ = '1.0b5'
+__version__ = '1.0b6'
 
 # Don't ask if fewer than this number of files deleted
 CUTOFF = 3
@@ -294,11 +294,29 @@ def get_mount(fl):
     return '/'
 
 
+def get_trash(fl):
+    """Return the trash can for the file/dir fl."""
+    v_trash_mac = os.path.join('.Trashes', str(UID))
+    v_trash_lin = '.Trash-{0}'.format(UID)
+    v_trash = v_trash_mac if SYSTEM == 'Darwin' else v_trash_lin
+
+    fl = os.path.abspath(fl)
+    mnt = get_mount(fl)
+    if mnt == '/':
+        if HAS_HOME and fl.startswith(HOME):
+            trash = HOME_TRASH
+        else:
+            trash = RECYCLE_BIN
+    elif mnt == HOME:
+        trash = HOME_TRASH
+    else:
+        trash = os.path.join(mnt, v_trash)
+
+    return trash
 
 ###############################################################################
 #                              Deletion Helpers                               #
 ###############################################################################
-
 
 
 def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
@@ -363,34 +381,21 @@ def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
                     break
         else:
             mnt = get_mount(fl)
-            if mnt == '/':
-                if HAS_HOME and fl.startswith(HOME):
-                    mnt = HOME_TRASH
-                else:
-                    mnt = RECYCLE_BIN
-            elif mnt == HOME:
-                mnt = HOME_TRASH
             bins[mnt].append(fl)
             gotn += (mnt,)
 
     # Build final list of recycle bins
     trashes = {}
     to_delete = []
-    v_trash_mac = os.path.join('.Trashes', UID)
-    v_trash_lin = '.Trash-{0}'.format(UID)
-    v_trash = v_trash_mac if SYSTEM == 'Darwin' else v_trash_lin
     for mount, file_list in bins.items():
-        if mount == HOME_TRASH or mount == RECYCLE_BIN:
-            r_trash = mount
-        else:
-            r_trash = os.path.join(mount, v_trash)
+        r_trash = get_trash(mount)
         if os.path.isdir(r_trash):
             trashes[r_trash] = file_list
         else:
             ans = get_ans(
                 ('Mount {0} has no trash at {1}.\n' +
                  'Skip, create, use (root) {2}, or delete files?')
-                .format(mount, v_trash, RECYCLE_BIN),
+                .format(mount, r_trash, RECYCLE_BIN),
                 ['skip', 'create', 'root', 'del']
             )
             if ans == 'create':
@@ -406,6 +411,7 @@ def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
             elif ans == 'del':
                 to_delete += file_list
             elif ans == 'skip':
+                # Just don't add the files to the trashes dict
                 pass
             else:
                 raise Exception('Invalid response {0}'.format(ans))
@@ -548,6 +554,12 @@ def main(argv=None):
         elif arg == '--dryrun':
             dryrun = True
             sys.stderr.write('Dry Run. Not actually removing files.\n\n')
+        elif arg == '--get-trash':
+            # Print trash for next arg and immediately exit
+            tindex = argv.index(arg)+1
+            tpath = argv[tindex] if len(argv) > tindex else os.curdir
+            sys.stdout.write(get_trash(tpath))
+            return 0
         elif arg == '--':
             # Everything after this is a file
             file_sep = '--'
@@ -556,6 +568,13 @@ def main(argv=None):
                 for i in l
             ]
             break
+        elif arg == '-':
+            # Read files in from STDIN
+            all_files += [
+                i for l in \
+                [glob(n) for n in sys.stdin.read().strip().split()] \
+                for i in l
+            ]
         elif arg.startswith('-'):
             if 'r' in arg or 'R' in arg:
                 recursive = True
