@@ -55,10 +55,11 @@ from getpass import getuser
 from platform import system
 from datetime import datetime as dt
 from collections import defaultdict as dd
-from subprocess import call, check_output, CalledProcessError
+from subprocess import call, Popen, PIPE, CalledProcessError
 try:
     from builtins import input
 except ImportError:
+    # For old versions of python 2
     input = raw_input
 
 __version__ = '1.0b3'
@@ -68,10 +69,61 @@ CUTOFF = 3
 DOCSTR = '{0}\nWARNING CUTOFF: {1}\n'.format(__doc__, str(CUTOFF))
 
 # Print on one line if fewer than this number
-MAX_LINE = 5
+MAX_LINE = 2
 
 # Where to move files to if recycled system-wide
 RECYCLE_BIN = os.path.expandvars('/tmp/{0}_trash'.format(getuser()))
+
+
+###############################################################################
+#                   Compatability Functions for Python 2.6+                   #
+###############################################################################
+
+
+def quote(s):
+    """Return a shell-escaped version of the string *s*."""
+    if hasattr(sh, 'quote'):
+        return sh.quote(s)
+    if not s:
+        return "''"
+
+    # use single quotes, and put single quotes into double quotes
+    # the string $'b is then quoted as '$'"'"'b'
+    return "'" + s.replace("'", "'\"'\"'") + "'"
+
+
+def run(cmd, check=False, get=True):
+    """Replicate getstatusoutput from subprocess."""
+    if isinstance(cmd, str):
+        cmd = sh.split(cmd)
+    if get:
+        pp = Popen(cmd, stdout=PIPE, stderr=PIPE)
+        out, err = pp.communicate()
+    else:
+        pp = Popen(cmd)
+        pp.communicate()
+    code = pp.returncode
+    if check and code != 0:
+        raise CalledProcessError(code, cmd)
+    if not isinstance(out, str):
+        out = out.decode()
+    if not isinstance(err, str):
+        err = err.decode()
+    if get:
+        return code, out.rstrip(), err.rstrip()
+    return code
+
+
+def check_output(cmd):
+    """Return STDOUT for cmd."""
+    _, stdout, _ = run(cmd)
+    return stdout
+
+
+###############################################################################
+#               Constants the need the python compat functions                #
+###############################################################################
+
 
 # Home directory recycling
 UID = os.getuid()
@@ -161,7 +213,7 @@ def format_list(input_list):
     """
     try:
         term_width = int(check_output(['tput', 'cols']).decode().strip())
-    except (CalledProcessError, FileNotFoundError, ValueError):
+    except (CalledProcessError, OSError, ValueError):
         term_width = 80
 
     if len(str(input_list)) < term_width:
@@ -241,8 +293,12 @@ def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
     list
         List of failed files, empty on success
     """
+    # Get the longest path first, so we can pick the best mountpoints
     # We need absolute paths for recycling
-    files = [os.path.abspath(i) for i in files]
+    files = sorted(
+        [os.path.abspath(i) for i in files],
+        key=lambda x: len(x), reverse=True
+    )
 
     # Try applescript first on MacOS
     if try_apple and SYSTEM == 'Darwin' and HAS_OSA:
@@ -269,9 +325,6 @@ def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
     # Get a mount point for all files
     bins = dd(list)
     gotn = tuple()
-
-    # Get the longest path first, so we can pick the best mountpoints
-    files = sorted(files, key=lambda x: len(x), reverse=True)
     for fl in files:
         # Load the ones we have found already quickly
         if fl.startswith(gotn):
@@ -286,6 +339,8 @@ def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
                     mnt = HOME_TRASH
                 else:
                     mnt = RECYCLE_BIN
+            elif mnt == HOME:
+                mnt = HOME_TRASH
             bins[mnt].append(fl)
             gotn += (mnt,)
 
@@ -302,9 +357,10 @@ def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
             trashes[r_trash] = file_list
         else:
             ans = get_ans(
-                'Mount {0} has no {1}. Create, use (root) {2}, or delete files?'
+                ('Mount {0} has no {1}.\n' +
+                 'Skip, create, use (root) {2}, or delete files?')
                 .format(mount, v_trash, RECYCLE_BIN),
-                ['create', 'root', 'del']
+                ['skip', 'create', 'root', 'del']
             )
             if ans == 'create':
                 os.makedirs(r_trash)
@@ -318,6 +374,8 @@ def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
                 trashes[RECYCLE_BIN] += file_list
             elif ans == 'del':
                 to_delete += file_list
+            elif ans == 'skip':
+                pass
             else:
                 raise Exception('Invalid response {0}'.format(ans))
 
@@ -367,13 +425,13 @@ def recycle_file(fl, trash, mv_flags=None):
     if trash == RECYCLE_BIN or SYSTEM != 'Linux':
         return call(
             sh.split('mv {0} -- {1} {2}'.format(
-                mv_flags, sh.quote(fl), sh.quote(trash)
+                mv_flags, quote(fl), quote(trash)
             ))
         )
     trash_can = os.path.join(trash, 'files')
     err = call(
         sh.split('mv {0} -- {1} {2}'.format(
-            mv_flags, sh.quote(fl), sh.quote(trash_can)
+            mv_flags, quote(fl), quote(trash_can)
         ))
     )
     if err == 0:
@@ -461,7 +519,7 @@ def main(argv=None):
             if 'v' in arg:
                 verbose = True
                 rec_args.append('-v')
-            flags.append(sh.quote(arg))
+            flags.append(quote(arg))
         else:
             all_files += glob(arg)
     if no_recycle:
@@ -605,7 +663,7 @@ def main(argv=None):
     if to_delete:
         cmnd = 'rm {0} {1} {2}'.format(
             ' '.join(flags), file_sep,
-            ' '.join([sh.quote(i) for i in to_delete])
+            ' '.join([quote(i) for i in to_delete])
         )
 
         if dryrun or verbose:
