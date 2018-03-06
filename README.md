@@ -1,6 +1,6 @@
 # Careful rm
 
-Version: 1.0-beta5
+Version: 1.0-beta6
 
 A wrapper for rm that adds more useful warnings and an optional recycle/trash mode
 
@@ -54,7 +54,7 @@ options have any meaning in recycle mode, which uses `mv`. Argument order does
 not matter.
 ```
 
-## Installation
+## Install Script Only
 
 To use this `rm` wrapper, the best way to go is to install the repo as a ZSH or
 Bash plugin (see below). However, you can just put it into your `$PATH` and use
@@ -63,14 +63,18 @@ it directly. e.g.:
 1. `cd /usr/local/bin`
 2. `wget https://raw.githubusercontent.com/MikeDacre/careful_rm/master/careful_rm.py`
 
-Ideally it should be *aliased to rm*. To facilitate that, you can use the
-`careful_rm.alias.sh` file or just add this to your config (e.g. `.bashrc`):
+Ideally it should be *aliased to rm*. To facilitate that, you can download this
+repo and source the `careful_rm.alias.sh` file or, if you put `careful_rm` into
+your `PATH`, just add this to your config (e.g. `.bashrc`):
 
-    if hash careful_rm.py 2>/dev/null; then
-        alias rm="$(command -v careful_rm.py)"
-    else
-        alias rm="rm -I"
-    fi
+```shell
+if hash careful_rm.py 2>/dev/null; then
+    alias rm="$(command -v careful_rm.py)"
+else
+    alias rm="rm -I"
+fi
+```
+## Install as a plugin
 
 ### Requirements
 
@@ -91,7 +95,13 @@ With any `sh` like shell (`sh`, `bash`, `fish`, `zsh`)
 
 ### ZSH
 
-ZSH offers some great ways to install as a plugin and stay up to date.
+The ZSH version of this plugin is provided by the `careful_rm.plugin.zsh` file.
+In addition to aliasing `rm` to `careful_rm`, it also sets a `$TRASH` variable
+that updates with every directory change and makes `~trash` a named directory
+that points to `$TRASH`.
+
+ZSH offers some great ways to install as a plugin and stay up to date, my
+favorite is antigen, but any of the following methods will work.
 
 #### [Antigen](github.com/zsh-users/antigen)
 
