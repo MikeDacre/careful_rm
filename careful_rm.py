@@ -376,7 +376,9 @@ def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
     # Build final list of recycle bins
     trashes = {}
     to_delete = []
-    v_trash = '.Trash' if SYSTEM == 'Darwin' else '.Trash-{0}'.format(UID)
+    v_trash_mac = os.path.join('.Trashes', UID)
+    v_trash_lin = '.Trash-{0}'.format(UID)
+    v_trash = v_trash_mac if SYSTEM == 'Darwin' else v_trash_lin
     for mount, file_list in bins.items():
         if mount == HOME_TRASH or mount == RECYCLE_BIN:
             r_trash = mount
@@ -386,7 +388,7 @@ def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
             trashes[r_trash] = file_list
         else:
             ans = get_ans(
-                ('Mount {0} has no {1}.\n' +
+                ('Mount {0} has no trash at {1}.\n' +
                  'Skip, create, use (root) {2}, or delete files?')
                 .format(mount, v_trash, RECYCLE_BIN),
                 ['skip', 'create', 'root', 'del']
