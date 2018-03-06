@@ -21,3 +21,9 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# Vim
+Session.vim
+
+# Apple
+.DS_Store

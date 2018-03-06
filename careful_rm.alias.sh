@@ -13,4 +13,14 @@ DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
 CAREFUL_RM="${DIR}/careful_rm.py"
 
-alias rm="${CAREFUL_RM}"
+# Only use our careful_rm if it exists, if not, try for a version on the
+# PATH, failing that, fall back to rm -I
+if [ -x "${CAREFUL_RM}" ]; then
+    alias rm="${CAREFUL_RM}"
+elif hash careful_rm.py 2>/dev/null; then
+    alias rm="$(command -v careful_rm.py)"
+elif hash careful_rm 2>/dev/null; then
+    alias rm="$(command -v careful_rm)"
+else
+    alias rm="rm -I"
+fi
