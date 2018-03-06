@@ -69,7 +69,7 @@ except ImportError:
     # For old versions of python 2
     input = raw_input
 
-__version__ = '1.0b6'
+__version__ = '1.0b7'
 
 # Don't ask if fewer than this number of files deleted
 CUTOFF = 3
@@ -294,13 +294,21 @@ def get_mount(fl):
     return '/'
 
 
-def get_trash(fl):
+def get_trash(fl=None):
     """Return the trash can for the file/dir fl."""
+    # Default trash locations
     v_trash_mac = os.path.join('.Trashes', str(UID))
     v_trash_lin = '.Trash-{0}'.format(UID)
     v_trash = v_trash_mac if SYSTEM == 'Darwin' else v_trash_lin
 
+    # Get absolute path to location of interest
+    if not fl:
+        if sys.argv and len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
+            fl = sys.argv[1]
+        else:
+            fl = os.path.curdir
     fl = os.path.abspath(fl)
+
     mnt = get_mount(fl)
     if mnt == '/':
         if HAS_HOME and fl.startswith(HOME):
@@ -524,6 +532,7 @@ def main(argv=None):
     """The careful rm function."""
     if not argv:
         argv = sys.argv
+    sys.argv = None
     if not argv:
         sys.stderr.write(
             'Arguments required\n\n' + DOCSTR
@@ -685,8 +694,8 @@ def main(argv=None):
                         dc += 1
                     else:
                         fc += 1
+            info = []
             if dc or fc:
-                info = []
                 if fc:
                     info.append('{0} subfiles'.format(fc))
                 if dc:
