@@ -2,7 +2,7 @@
 Careful rm
 ##########
 
-Version: 1.0-beta6
+Version: 1.0-beta7
 
 A wrapper for rm that adds more useful warnings and an optional recycle/trash
 mode
