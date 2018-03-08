@@ -2,10 +2,34 @@
 #              careful_rm aliases for sh, bash, and zsh               #
 #######################################################################
 
-# First get the *system* python, the python script should work
-# everywhere, even on old systems, by using system python by
-# default, we can avoid possible issues with faulty python installs.
-# This is not used if we end up using a pip installed version
+# Get PATH to the careful_rm.py python script, works with sh, bash, zsh,
+# and dash
+if [ -n "${ZSH_VERSION}" ]; then
+    SOURCE="$0:A"
+elif [ -n "${BASH_SOURCE}" ]; then
+    SOURCE="${BASH_SOURCE}"
+elif [ -f "$0" ]; then
+    SOURCE="$0"
+else
+    SOURCE="$_"
+fi
+# resolve $SOURCE until the file is no longer a symlink
+while [ -h "$SOURCE" ]; do
+  DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  # if $SOURCE was a relative symlink, we need to resolve it relative to the
+  # path where the symlink file was located
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+CAREFUL_RM_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+
+# Try to use our version first
+CAREFUL_RM="${CAREFUL_RM_DIR}/careful_rm.py"
+
+# Get the *system* python, the python script should work everywhere, even on
+# old systems, by using system python by default, we can avoid possible issues
+# with faulty python installs.  This is not used if we end up using a pip
+# installed version
 if hash python 2>/dev/null; then
     _PY=$(command -pv python)
     declare -i _pyver
@@ -25,21 +49,6 @@ else
     return 1
     exit 1
 fi
-
-# Get PATH to the careful_rm.py python script
-SOURCE="$0"
-# resolve $SOURCE until the file is no longer a symlink
-while [ -h "$SOURCE" ]; do
-  DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
-  SOURCE="$(readlink "$SOURCE")"
-  # if $SOURCE was a relative symlink, we need to resolve it relative to the
-  # path where the symlink file was located
-  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
-done
-CAREFUL_RM_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
-
-# Try to use our version first
-CAREFUL_RM="${CAREFUL_RM_DIR}/careful_rm.py"
 
 # Only use our careful_rm if it exists, if not, try for a version on the
 # PATH, failing that, fall back to rm -I
