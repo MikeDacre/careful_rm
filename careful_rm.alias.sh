@@ -70,14 +70,14 @@ fi
 if [ -z "${_USE_PIP}" ]; then
     echo "PIP!"
     alias rm="${CAREFUL_RM}"
-    alias current_trash="${CAREFUL_RM} --get-trash \${PWD}"
+    alias trash_dir="${CAREFUL_RM} --get-trash \${PWD}"
 elif [ -f "${CAREFUL_RM}" ]; then
     alias rm="${_PY} ${CAREFUL_RM}"
     # Alias careful_rm if it isn't installed via pip already
     if ! hash careful_rm 2>/dev/null; then
         alias careful_rm="${_PY} ${CAREFUL_RM}"
     fi
-    alias current_trash="${_PY} ${CAREFUL_RM} --get-trash \${PWD}"
+    alias trash_dir="${_PY} ${CAREFUL_RM} --get-trash \${PWD}"
 else
     echo "careful_rm.py is not available, using regular rm"
     alias rm="rm -I"
