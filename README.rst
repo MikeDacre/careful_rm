@@ -46,8 +46,10 @@ Usage
             --dryrun          do not actually remove or move files, just print
         -h, --help            display this help and exit
 
-    Arguments Passed to rm
-    ----------------------
+    All other arguments passed to rm
+
+    Common rm arguments
+    -------------------
         -f, --force           ignore nonexistent files and arguments, never prompt
         -i                    prompt before every removal
         -I                    prompt once before removing more than three files, or
