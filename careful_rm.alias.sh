@@ -31,7 +31,7 @@ CAREFUL_RM="${CAREFUL_RM_DIR}/careful_rm.py"
 # with faulty python installs.  This is not used if we end up using a pip
 # installed version
 if hash python 2>/dev/null; then
-    _PY=$(sh command -pv python)
+    _PY=$(sh -c "command -pv python")
     declare -i _pyver
     _pyver=$(${_PY} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
     # Try to get another version if the system version is ancient
