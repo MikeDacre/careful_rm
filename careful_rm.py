@@ -755,7 +755,8 @@ def main(argv=None):
     # Handle non-files separately
     if oth:
         sys.stderr.write(
-            'The following files cannot be recycled and will be deleted:\n'
+            'The following cannot be recycled and will be deleted:\n{0}\n'
+            .format(format_list(oth))
         )
         if yesno('Delete?', False):
             if call(sh.split('rm -- {0}'.format(' '.join(oth)))) == 0:
