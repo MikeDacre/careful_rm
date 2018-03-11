@@ -2,8 +2,17 @@
 #              careful_rm aliases for sh, bash, and zsh               #
 #######################################################################
 
-# Get PATH to the python script
-SOURCE="$0"
+# Get PATH to the careful_rm.py python script, works with sh, bash, zsh,
+# and dash
+if [ -n "${ZSH_VERSION}" ]; then
+    SOURCE="$0:A"
+elif [ -n "${BASH_SOURCE}" ]; then
+    SOURCE="${BASH_SOURCE}"
+elif [ -f "$0" ]; then
+    SOURCE="$0"
+else
+    SOURCE="$_"
+fi
 # resolve $SOURCE until the file is no longer a symlink
 while [ -h "$SOURCE" ]; do
   DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
@@ -14,25 +23,61 @@ while [ -h "$SOURCE" ]; do
 done
 CAREFUL_RM_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
+# Try to use our version first
 CAREFUL_RM="${CAREFUL_RM_DIR}/careful_rm.py"
+
+# Get the *system* python, the python script should work everywhere, even on
+# old systems, by using system python by default, we can avoid possible issues
+# with faulty python installs.  This is not used if we end up using a pip
+# installed version
+if hash python 2>/dev/null; then
+    _PY=$(sh -c "command -pv python")
+    declare -i _pyver
+    _pyver=$(${_PY} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
+    # Try to get another version if the system version is ancient
+    if [[ _pyver -lt 26 ]]; then
+        _PY=$(command -v python)
+        _pyver=$(${_PY} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
+    fi
+    if [[ _pyver -lt 26 ]]; then
+        echo "Python too old for careful_rm, need python 2.6+"
+        return 1
+        exit 1
+    fi
+else
+    echo "No python found!! careful_rm will not work"
+    return 1
+    exit 1
+fi
 
 # Only use our careful_rm if it exists, if not, try for a version on the
 # PATH, failing that, fall back to rm -I
-if [ ! -x "${CAREFUL_RM}" ]; then
-    if hash careful_rm.py 2>/dev/null; then
-        CAREFUL_RM="$(command -v careful_rm.py)"
-    elif hash careful_rm 2>/dev/null; then
+_USE_PIP=0
+if [ ! -f "${CAREFUL_RM}" ]; then
+    # Installed by pip
+    if hash careful_rm 2>/dev/null; then
+        _USE_PIP=1
         CAREFUL_RM="$(command -v careful_rm)"
+    # Installed directly
+    elif hash careful_rm.py 2>/dev/null; then
+        CAREFUL_RM="$(command -v careful_rm.py)"
     else
         CAREFUL_RM=""
     fi
 fi
 
-# Set the alias
-if [ -x "${CAREFUL_RM}" ]; then
+# Set the aliases
+if [ -z "${_USE_PIP}" ]; then
+    echo "PIP!"
     alias rm="${CAREFUL_RM}"
-    alias careful_rm="${CAREFUL_RM}"
-    alias current_trash="${CAREFUL_RM} --get-trash \${PWD}"
+    alias trash_dir="${CAREFUL_RM} --get-trash \${PWD}"
+elif [ -f "${CAREFUL_RM}" ]; then
+    alias rm="${_PY} ${CAREFUL_RM}"
+    # Alias careful_rm if it isn't installed via pip already
+    if ! hash careful_rm 2>/dev/null; then
+        alias careful_rm="${_PY} ${CAREFUL_RM}"
+    fi
+    alias trash_dir="${_PY} ${CAREFUL_RM} --get-trash \${PWD}"
 else
     echo "careful_rm.py is not available, using regular rm"
     alias rm="rm -I"

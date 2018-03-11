@@ -2,7 +2,7 @@
 Careful rm
 ##########
 
-Version: 1.0-beta7
+Version: 1.0-beta8
 
 A wrapper for rm that adds more useful warnings and an optional recycle/trash
 mode
@@ -67,12 +67,12 @@ Install as a plugin
 Requirements
 ~~~~~~~~~~~~
 
-- An ``sh`` style shell, preferably ``zsh``, ``fish``, or ``bash``
+- An ``sh`` style shell, preferably ``zsh``, ``dash``, or ``bash``
 - Python version 2.6+, no additional modules required
 
 *It should work almost everywhere*
 
-(**Note**: Windows maintainer wanted, it doesn't work there)
+**Note**: If anyone can help with a FISH and/or Windows version, that would be great
 
 General Install
 ~~~~~~~~~~~~~~~
