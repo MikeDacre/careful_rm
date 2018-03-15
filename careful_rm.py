@@ -71,11 +71,13 @@ except ImportError:
     # For old versions of python 2
     input = raw_input
 
-__version__ = '1.0b8'
+__version__ = '1.0b9'
 
 # Don't ask if fewer than this number of files deleted
 CUTOFF = 3
-DOCSTR = '{0}\nWARNING CUTOFF: {1}\n'.format(__doc__, str(CUTOFF))
+DOCSTR = '{0}\nCUTOFF: {1} (more files than this results in warning\n'.format(
+    __doc__, str(CUTOFF)
+)
 
 # Print on one line if fewer than this number
 MAX_LINE = 2
