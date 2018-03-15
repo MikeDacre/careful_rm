@@ -100,9 +100,9 @@ favorite is antigen, but any of the following methods will work.
 .........................................
 
 
-If you're using ``Antigen <github.com/zsh-users/antigen>``_, just add ``antigen
+If you're using `Antigen <github.com/zsh-users/antigen>`_, just add ``antigen
 bundle MikeDacre/careful_rm`` to your ``.zshrc`` file where you're loading your
-other zsh plugins.
+other zsh plugins. You will need to reload ZSH to install the plugin.
 
 `Oh-My-ZSH <github.com/robbyrussell/oh-my-zsh>`_
 ................................................
@@ -115,7 +115,7 @@ other zsh plugins.
 `Zgen <github.com/tarjoilija/zgen>`_
 ....................................
 
-If you're using ``Zgen <github.com/tarjoilija/zgen>``_, add ``zgen load
+If you're using `Zgen <github.com/tarjoilija/zgen>`_, add ``zgen load
 MikeDacre/careful_rm`` to your ``.zshrc`` file where you're loading your other zsh
 plugins.
 
