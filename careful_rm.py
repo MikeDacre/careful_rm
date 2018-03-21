@@ -99,8 +99,32 @@ def quote(s):
     return "'" + s.replace("'", "'\"'\"'") + "'"
 
 
-def run(cmd, shell=False, check=False, get=True):
-    """Replicate getstatusoutput from subprocess."""
+def run(cmd, shell=False, check=False, get='all'):
+    """Replicate getstatusoutput from subprocess.
+
+    Params
+    ------
+    cmd : str or list
+    shell : bool, optional
+        Run as a shell, allows piping
+    check : bool, optional
+        Raise exception if command failed
+    get : {'all', 'code', 'stdout', 'stderr'}, optional
+        Control what is returned:
+            - all: (code, stdout, stderr)
+            - code/stdout/stderr: only that item
+            - None: code only
+
+    Returns
+    -------
+    output : str or tuple
+        See get above. Default return value: (code, stdout, stderr)
+    """
+    get_options = ['all', 'stdout', 'stderr', 'code', None]
+    if not get in get_options:
+        raise ValueError(
+            'get must be one of {0} is {1}'.format(get_options, get)
+        )
     if not shell and isinstance(cmd, str):
         cmd = sh.split(cmd)
     if get:
@@ -121,8 +145,12 @@ def run(cmd, shell=False, check=False, get=True):
                 .format(out, err)
             )
         raise CalledProcessError(code, cmd)
-    if get:
+    if get == 'all':
         return code, out.rstrip(), err.rstrip()
+    elif get == 'stdout':
+        return out.rstrip()
+    elif get == 'stderr':
+        return err.rstrip()
     return code
 
 
