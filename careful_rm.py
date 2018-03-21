@@ -31,8 +31,10 @@ Arguments
         --dryrun          do not actually remove or move files, just print
     -h, --help            display this help and exit
 
-Arguments Passed to rm
-----------------------
+All other arguments passed to rm
+
+Common rm arguments
+-------------------
     -f, --force           ignore nonexistent files and arguments, never prompt
     -i                    prompt before every removal
     -I                    prompt once before removing more than three files, or
@@ -69,11 +71,13 @@ except ImportError:
     # For old versions of python 2
     input = raw_input
 
-__version__ = '1.0b7'
+__version__ = '1.0b9'
 
 # Don't ask if fewer than this number of files deleted
 CUTOFF = 3
-DOCSTR = '{0}\nWARNING CUTOFF: {1}\n'.format(__doc__, str(CUTOFF))
+DOCSTR = '{0}\nCUTOFF: {1} (more files than this results in warning\n'.format(
+    __doc__, str(CUTOFF)
+)
 
 # Print on one line if fewer than this number
 MAX_LINE = 2
@@ -755,7 +759,8 @@ def main(argv=None):
     # Handle non-files separately
     if oth:
         sys.stderr.write(
-            'The following files cannot be recycled and will be deleted:\n'
+            'The following cannot be recycled and will be deleted:\n{0}\n'
+            .format(format_list(oth))
         )
         if yesno('Delete?', False):
             if call(sh.split('rm -- {0}'.format(' '.join(oth)))) == 0:
