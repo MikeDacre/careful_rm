@@ -71,7 +71,7 @@ except ImportError:
     # For old versions of python 2
     input = raw_input
 
-__version__ = '1.0b9'
+__version__ = '1.0b10'
 
 # Don't ask if fewer than this number of files deleted
 CUTOFF = 3
