@@ -667,7 +667,7 @@ def main(argv=None):
     bad = []
     oth = []
     for fl in all_files:
-        if os.path.isdir(fl):
+        if os.path.isdir(fl) and not os.path.islink(fl):
             drs.append(fl)
         elif os.path.isfile(fl) or os.path.islink(fl):
             fls.append(fl)
