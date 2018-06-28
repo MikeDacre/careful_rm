@@ -30,6 +30,8 @@ CAREFUL_RM="${CAREFUL_RM_DIR}/careful_rm.py"
 # old systems, by using system python by default, we can avoid possible issues
 # with faulty python installs.  This is not used if we end up using a pip
 # installed version
+
+# First pass
 if hash python 2>/dev/null; then
     _PY=$(command -pv python 2>/dev/null || env -i sh -c "command -pv python")
     declare -i _pyver
@@ -37,14 +39,30 @@ if hash python 2>/dev/null; then
     # Try to get another version if the system version is ancient
     if [[ _pyver -lt 26 ]]; then
         _PY=$(command -v python)
-        _pyver=$(${_PY} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
     fi
+    _pyver=$(${_PY} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
     if [[ _pyver -lt 26 ]]; then
-        echo "Python too old for careful_rm, need python 2.6+"
-        return 1
-        exit 1
+        # Failed try second pass
+        unset _PY
     fi
-else
+fi
+
+# Second pass
+if [ ! -x $_PY ]; then
+    _pos_paths=('/usr/local/bin/python3' '/usr/bin/python3' '/usr/local/bin/python' '/usr/bin/python' '/bin/python3' '/bin/python')
+    for _pth in "${pos_paths[@]}"; do
+        if [ -x $_pth ]; then
+            _pyver=$(${_PY} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
+            if [[ _pyver -lt 26 ]]; then
+                _PY="$_pth"
+                break
+            fi
+        fi
+    done
+fi
+
+# Final check
+if [ ! -x $_PY ]; then
     echo "No python found!! careful_rm will not work"
     return 1
     exit 1
@@ -68,7 +86,6 @@ fi
 
 # Set the aliases
 if [ -z "${_USE_PIP}" ]; then
-    echo "PIP!"
     alias rm="${CAREFUL_RM}"
     alias trash_dir="${CAREFUL_RM} --get-trash \${PWD}"
 elif [ -f "${CAREFUL_RM}" ]; then
@@ -82,5 +99,7 @@ else
     echo "careful_rm.py is not available, using regular rm"
     alias rm="rm -I"
 fi
+
+unset _PY _USE_PIP _pth _pos_paths _pyver
 
 export CAREFUL_RM CAREFUL_RM_DIR
