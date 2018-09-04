@@ -124,7 +124,9 @@ def run(cmd, shell=False, check=False, get='all'):
     output : str or tuple
         See get above. Default return value: (code, stdout, stderr)
     """
-    get_options = ['all', 'stdout', 'stderr', 'code', None]
+    get_options = ['all', 'stdout', 'stderr', 'code', None, True]
+    if get == True:
+        get = 'all'
     if not get in get_options:
         raise ValueError(
             'get must be one of {0} is {1}'.format(get_options, get)
