@@ -108,7 +108,7 @@ other zsh plugins. You will need to reload ZSH to install the plugin.
 ................................................
 
 1. ``mkdir -p ~/oh-my-zsh/custom/plugins``
-2. ``cd ~/oh-my-zsh/custom/plugins``
+2. ``cd ~/.oh-my-zsh/custom/plugins``
 3. ``git clone git@github.com:MikeDacre/careful_rm.git``
 4. add ``plugins+=(careful_rm)`` to the right place in your ``~/.zshrc``
 
