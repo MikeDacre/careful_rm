@@ -52,8 +52,8 @@ if [ ! -x $_PY ]; then
     _pos_paths=('/usr/local/bin/python3' '/usr/bin/python3' '/usr/local/bin/python' '/usr/bin/python' '/bin/python3' '/bin/python')
     for _pth in "${pos_paths[@]}"; do
         if [ -x $_pth ]; then
-            _pyver=$(${_PY} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
-            if [[ _pyver -lt 26 ]]; then
+            _pyver=$(${_pth} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
+            if [[ _pyver -ge 26 ]]; then
                 _PY="$_pth"
                 break
             fi
