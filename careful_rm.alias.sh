@@ -39,11 +39,11 @@ if hash python 2>/dev/null; then
     # Try to get another version if the system version is ancient
     if [[ _pyver -lt 26 ]]; then
         _PY=$(command -v python)
-    fi
-    _pyver=$(${_PY} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
-    if [[ _pyver -lt 26 ]]; then
-        # Failed try second pass
-        unset _PY
+        _pyver=$(${_PY} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
+        if [[ _pyver -lt 26 ]]; then
+            # Failed try second pass
+            unset _PY
+        fi
     fi
 fi
 
