@@ -59,13 +59,13 @@ if [ ! -x $_PY ]; then
             fi
         fi
     done
-fi
 
-# Final check
-if [ ! -x $_PY ]; then
-    echo "No python found!! careful_rm will not work"
-    return 1
-    exit 1
+    # Final check
+    if [ ! -x $_PY ]; then
+        echo "No python found!! careful_rm will not work"
+        return 1
+        exit 1
+    fi
 fi
 
 # Only use our careful_rm if it exists, if not, try for a version on the
