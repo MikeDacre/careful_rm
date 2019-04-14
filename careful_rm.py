@@ -71,7 +71,7 @@ except ImportError:
     # For old versions of python 2
     input = raw_input
 
-__version__ = '1.0b10'
+__version__ = '1.0b11'
 
 # Don't ask if fewer than this number of files deleted
 CUTOFF = 3
@@ -328,6 +328,14 @@ def get_mount(fl):
     return '/'
 
 
+def get_trashes(files):
+    """Return a dictionary of trash->files for files in list."""
+    trashes = dd(list)
+    for file in files:
+        trashes[get_trash(file)].append(file)
+    return trashes
+
+
 def get_trash(fl=None):
     """Return the trash can for the file/dir fl."""
     # Default trash locations
@@ -343,16 +351,20 @@ def get_trash(fl=None):
             fl = os.path.curdir
     fl = os.path.abspath(fl)
 
-    mnt = get_mount(fl)
-    if mnt == '/':
-        if HAS_HOME and fl.startswith(HOME):
-            trash = HOME_TRASH
-        else:
-            trash = RECYCLE_BIN
-    elif mnt == HOME:
+    # First check if we are HOME, if not, get mount-based location
+    if fl.startswith(HOME):
         trash = HOME_TRASH
     else:
-        trash = os.path.join(mnt, v_trash)
+        mnt = get_mount(fl)
+        if mnt == '/':
+            if HAS_HOME and fl.startswith(HOME):
+                trash = HOME_TRASH
+            else:
+                trash = RECYCLE_BIN
+        elif mnt == HOME:
+            trash = HOME_TRASH
+        else:
+            trash = os.path.join(mnt, v_trash)
 
     return trash
 
@@ -430,33 +442,35 @@ def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
     trashes = {}
     to_delete = []
     for mount, file_list in bins.items():
-        r_trash = get_trash(mount)
-        if os.path.isdir(r_trash):
-            trashes[r_trash] = file_list
-        else:
-            ans = get_ans(
-                ('Mount {0} has no trash at {1}.\n' +
-                 'Skip, create, use (root) {2}, or delete files?')
-                .format(mount, r_trash, RECYCLE_BIN),
-                ['skip', 'create', 'root', 'del']
-            )
-            if ans == 'create':
-                os.makedirs(r_trash)
-                if SYSTEM == 'Linux':
-                    for f in ['expunged', 'files', 'info']:
-                        os.makedirs(os.path.join(r_trash, f))
+        # Get all trash directories
+        r_trashes = get_trashes(files)
+        for r_trash, r_trash_files in r_trashes.items():
+            if os.path.isdir(r_trash):
                 trashes[r_trash] = file_list
-            elif ans == 'root':
-                if RECYCLE_BIN not in trashes:
-                    trashes[RECYCLE_BIN] = []
-                trashes[RECYCLE_BIN] += file_list
-            elif ans == 'del':
-                to_delete += file_list
-            elif ans == 'skip':
-                # Just don't add the files to the trashes dict
-                pass
             else:
-                raise Exception('Invalid response {0}'.format(ans))
+                ans = get_ans(
+                    ('Mount {0} has no trash at {1}.\n' +
+                     'Skip, create, use (root) {2}, or delete files?')
+                     .format(mount, r_trash, RECYCLE_BIN),
+                     ['skip', 'create', 'root', 'del']
+                )
+                if ans == 'create':
+                    os.makedirs(r_trash)
+                    if SYSTEM == 'Linux':
+                        for f in ['expunged', 'files', 'info']:
+                            os.makedirs(os.path.join(r_trash, f))
+                    trashes[r_trash] = file_list
+                elif ans == 'root':
+                    if RECYCLE_BIN not in trashes:
+                        trashes[RECYCLE_BIN] = []
+                    trashes[RECYCLE_BIN] += file_list
+                elif ans == 'del':
+                    to_delete += file_list
+                elif ans == 'skip':
+                    # Just don't add the files to the trashes dict
+                    pass
+                else:
+                    raise Exception('Invalid response {0}'.format(ans))
 
     # Do the deed, one file at a time (for metadata)
     for trash, file_list in trashes.items():
@@ -508,6 +522,8 @@ def recycle_file(fl, trash, mv_flags=None):
             ))
         )
     trash_can = os.path.join(trash, 'files')
+    if not os.path.isdir(trash_can):
+        call(sh.split('mkdir {0}'.format(trash_can)))
     err = call(
         sh.split('mv {0} -- {1} {2}'.format(
             mv_flags, quote(fl), quote(trash_can)
@@ -515,8 +531,11 @@ def recycle_file(fl, trash, mv_flags=None):
     )
     if err == 0:
         now = dt.now()
+        trash_info = os.path.join(trash, 'info')
+        if not os.path.isdir(trash_info):
+            call(sh.split('mkdir {0}'.format(trash_info)))
         info_file = os.path.join(
-            trash, 'info', os.path.basename(fl) + '.trashinfo'
+            trash_info, os.path.basename(fl) + '.trashinfo'
         )
         with open(info_file, 'w') as trash_info:
             trash_info.write(
@@ -541,7 +560,6 @@ def recycle_darwin(fl, verbose=False):
     if verbose:
         sys.stderr.write(cmnd + '\n')
     return call(cmnd, shell=True)
-
 
 
 def shred_files(sfls, shred_args, verbose=False, dryrun=False):
