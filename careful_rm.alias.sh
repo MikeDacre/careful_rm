@@ -37,13 +37,13 @@ if hash python 2>/dev/null; then
     declare -i _pyver
     _pyver=$(${_PY} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
     # Try to get another version if the system version is ancient
-    if [[ _pyver -lt 26 ]]; then
+    if [[ _pyver -le 26 ]]; then
         _PY=$(command -v python)
-    fi
-    _pyver=$(${_PY} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
-    if [[ _pyver -lt 26 ]]; then
-        # Failed try second pass
-        unset _PY
+        _pyver=$(${_PY} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
+        if [[ _pyver -le 26 ]]; then
+            # Failed try second pass
+            unset _PY
+        fi
     fi
 fi
 
@@ -52,20 +52,20 @@ if [ ! -x $_PY ]; then
     _pos_paths=('/usr/local/bin/python3' '/usr/bin/python3' '/usr/local/bin/python' '/usr/bin/python' '/bin/python3' '/bin/python')
     for _pth in "${pos_paths[@]}"; do
         if [ -x $_pth ]; then
-            _pyver=$(${_PY} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
-            if [[ _pyver -lt 26 ]]; then
+            _pyver=$(${_pth} --version 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\2/')
+            if [[ _pyver -gt 26 ]]; then
                 _PY="$_pth"
                 break
             fi
         fi
     done
-fi
 
-# Final check
-if [ ! -x $_PY ]; then
-    echo "No python found!! careful_rm will not work"
-    return 1
-    exit 1
+    # Final check
+    if [ ! -x $_PY ]; then
+        echo "No python found!! careful_rm will not work"
+        return 1
+        exit 1
+    fi
 fi
 
 # Only use our careful_rm if it exists, if not, try for a version on the
