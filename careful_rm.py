@@ -621,6 +621,12 @@ def main(argv=None):
             tpath = argv[tindex] if len(argv) > tindex else os.curdir
             sys.stdout.write(get_trash(tpath))
             return 0
+        elif arg in ['-f', '--force']:
+            rec_args.append('-f')
+            shred_args.append('-f')
+        # TODO: interactive=WEHN
+        elif arg in ['-r', '-R', '--recursive']:
+            recursive = True
         elif arg == '--':
             # Everything after this is a file
             file_sep = '--'
