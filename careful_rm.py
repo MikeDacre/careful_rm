@@ -485,7 +485,7 @@ def recycle_files(files, mv_flags, try_apple=True, verbose=False, dryrun=False):
         sys.stderr.write(
             'Failed to recycle:\n{0}\n'.format(format_list(to_delete))
         )
-        if yesno('Attempt to fully delete with rm?', False):
+        if no_prompt or yesno('Attempt to fully delete with rm?', False):
             return to_delete
 
     return []
@@ -598,6 +598,7 @@ def main(argv=None):
     shred      = False  # Shred (destroy) files prior to deletion
     dryrun     = False  # Don't do anything, just print commands
     verbose    = False  # Print extra info
+    no_prompt  = False  # Skip prompt for confirmation
     recursive  = False  # Delete stuff in directories
     no_recycle = False  # Force off recycling
     recycle    = os.path.isfile(os.path.join(HOME, '.rm_recycle'))
@@ -621,6 +622,13 @@ def main(argv=None):
             tpath = argv[tindex] if len(argv) > tindex else os.curdir
             sys.stdout.write(get_trash(tpath))
             return 0
+        elif arg in ['-f', '--force']:
+            no_prompt = True
+            rec_args.append('-f')
+            shred_args.append('-f')
+        # TODO: interactive=WHEN
+        elif arg in ['-r', '-R', '--recursive']:
+            recursive = True
         elif arg == '--':
             # Everything after this is a file
             file_sep = '--'
@@ -646,6 +654,7 @@ def main(argv=None):
                 arg = arg.replace('s', '')
                 shred = True
             if 'f' in arg:
+                no_prompt = True
                 rec_args.append('-f')
                 shred_args.append('-f')
             if 'i' in arg:
@@ -766,21 +775,21 @@ def main(argv=None):
                 else:
                     msg += '\nThey contain no subfiles or directories'
             sys.stderr.write(msg + '\n')
-            if not yesno('Really delete?', False):
+            if not no_prompt and not yesno('Really delete?', False):
                 return 1
             sys.stderr.write('\n')
 
     # File handling
     if len(fls) >= CUTOFF:
         if len(fls) < MAX_LINE:
-            if not yesno('Delete the files {0}?'.format(fls), False):
+            if not no_prompt and not yesno('Delete the files {0}?'.format(fls), False):
                 return 6
         else:
             sys.stderr.write(
                 'Deleting the following {0} files:\n{1}\n'
                 .format(len(fls), format_list(fls))
             )
-            if not yesno('Delete?', False):
+            if not no_prompt and not yesno('Delete?', False):
                 return 10
         sys.stderr.write('\n')
 
@@ -810,7 +819,7 @@ def main(argv=None):
             'The following cannot be recycled and will be deleted:\n{0}\n'
             .format(format_list(oth))
         )
-        if yesno('Delete?', False):
+        if no_prompt or yesno('Delete?', False):
             if call(sh.split('rm -- {0}'.format(' '.join(oth)))) == 0:
                 sys.stderr.write('Done\n')
             else:
@@ -849,7 +858,7 @@ def main(argv=None):
                 )
             )
             msg = 'Continue with deletion anyway (data may not be scrubbed)?'
-            if not yesno(msg, False):
+            if not no_prompt and not yesno(msg, False):
                 return 13
             sys.stderr.write('\n')
 
